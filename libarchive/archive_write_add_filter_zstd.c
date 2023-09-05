@@ -430,7 +430,8 @@ archive_compressor_zstd_open(struct archive_write_filter *f)
 	}
 
 	if (data->threads != 0) {
-		archive_string_sprintf(&as, " --threads=%d", data->threads);
+		archive_strcat(&as, " --threads=");
+		append_int(&as, data->threads, 10);
 	}
 
 	f->write = archive_compressor_zstd_write;
