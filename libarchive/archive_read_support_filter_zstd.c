@@ -60,6 +60,7 @@ struct private_data {
 	int64_t		 total_out;
 	char		 in_frame; /* True = in the middle of a zstd frame. */
 	char		 eof; /* True = found end of compressed data. */
+	int			 windowlog_limit;
 };
 
 /* Zstd Filter. */
@@ -197,6 +198,17 @@ zstd_bidder_init(struct archive_read_filter *self)
 
 	state->eof = 0;
 	state->in_frame = 0;
+	state->windowlog_limit = 0;
+
+	// determine decompressor memory requirements for first frame
+	ssize_t avail;
+	const unsigned char *buffer = __archive_read_filter_ahead(self, 6, &avail);
+	if (buffer != NULL) {
+		unsigned prefix = archive_le32dec(buffer);
+		if (prefix == 0xFD2FB528U && !(buffer[4] & 0b00100000)) { // FIXME: magic numbers
+			state->windowlog_limit = 11 + ((buffer[5] & 0b11111000) >> 3);
+		}
+	}
 
 	return (ARCHIVE_OK);
 }
@@ -212,6 +224,12 @@ zstd_filter_read(struct archive_read_filter *self, const void **p)
 	size_t ret;
 
 	state = (struct private_data *)self->data;
+	
+	#if ZSTD_VERSION_NUMBER >= MINVER_LONG
+		if (state->windowlog_limit > 0) {
+			ZSTD_DCtx_setParameter(state->dstream, ZSTD_d_windowLogMax, state->windowlog_limit);
+		}
+	#endif
 
 	out = (ZSTD_outBuffer) { state->out_block, state->out_block_size, 0 };
 
